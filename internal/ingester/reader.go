@@ -40,7 +40,8 @@ func (c *Config) defaults() {
 		c.MinBackoff = time.Second
 	}
 	if c.MaxBackoff < c.MinBackoff {
-		c.MaxBackoff = 30 * time.Second
+		// Never retry faster than the configured minimum.
+		c.MaxBackoff = max(30*time.Second, c.MinBackoff)
 	}
 }
 

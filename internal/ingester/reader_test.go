@@ -175,3 +175,16 @@ func TestJitterStaysInRange(t *testing.T) {
 		}
 	}
 }
+
+func TestMaxBackoffIsNeverBelowMinBackoff(t *testing.T) {
+	c := Config{MinBackoff: time.Minute}
+	c.defaults()
+	if c.MaxBackoff < c.MinBackoff {
+		t.Fatalf("MaxBackoff %v is below MinBackoff %v", c.MaxBackoff, c.MinBackoff)
+	}
+	c = Config{}
+	c.defaults()
+	if c.MinBackoff != time.Second || c.MaxBackoff != 30*time.Second {
+		t.Fatalf("defaults = %v/%v", c.MinBackoff, c.MaxBackoff)
+	}
+}
