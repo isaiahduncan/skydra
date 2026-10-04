@@ -54,8 +54,13 @@ func New(window time.Duration, threshold int, logger *slog.Logger, now func() ti
 				"count", a.Count, "threshold", a.Threshold, "window_s", int(a.Window.Seconds()))
 		}
 	}
+	// Round up to a whole number of buckets so the counted window and the
+	// reported Alert.Window agree.
 	if window < BucketWidth {
 		window = BucketWidth
+	}
+	if rem := window % BucketWidth; rem != 0 {
+		window += BucketWidth - rem
 	}
 	return &Handler{
 		window: window, threshold: threshold, now: now, alert: alert,

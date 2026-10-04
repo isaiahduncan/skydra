@@ -101,3 +101,11 @@ func TestSweepForgetsIdleTargets(t *testing.T) {
 		t.Fatalf("idle target not evicted, targets=%d", f.h.Targets())
 	}
 }
+
+func TestWindowIsRoundedUpToWholeBuckets(t *testing.T) {
+	f := newFixture(7*time.Second, 2)
+	f.hit("at://p/1", 2)
+	if len(f.alerts) != 1 || f.alerts[0].Window != 10*time.Second {
+		t.Fatalf("alerts = %+v, want one alert reporting a 10s window", f.alerts)
+	}
+}
