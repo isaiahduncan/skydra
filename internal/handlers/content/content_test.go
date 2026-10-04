@@ -80,3 +80,11 @@ func TestRunStopsOnContextCancel(t *testing.T) {
 	}
 	_ = got
 }
+
+func TestRegionalConfigKeyMatchesBaseLanguageTag(t *testing.T) {
+	h, got := newTest(map[string][]string{"en-US": {"love"}})
+	h.Handle(events.PostCreated{Text: "love", Langs: []string{"en"}})
+	if len(*got) != 1 {
+		t.Fatalf("a config key of en-US must match the en tag, got %d notifications", len(*got))
+	}
+}

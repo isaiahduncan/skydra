@@ -47,7 +47,7 @@ func New(keywords map[string][]string, logger *slog.Logger, notify func(Notifica
 	}
 	h := &Handler{byLang: map[string][]matcher{}, notify: notify}
 	for lang, kws := range keywords {
-		lang = strings.ToLower(lang)
+		lang = baseLang(lang) // same reduction as post tags, so "en-US" matches "en"
 		for _, kw := range kws {
 			kw = strings.ToLower(strings.TrimSpace(kw))
 			if kw == "" {
@@ -98,14 +98,19 @@ func languages(tags []string) []string {
 	seen := map[string]bool{}
 	var out []string
 	for _, t := range tags {
-		l := strings.ToLower(t)
-		if i := strings.IndexAny(l, "-_"); i >= 0 {
-			l = l[:i]
-		}
-		if l != "" && !seen[l] {
+		if l := baseLang(t); l != "" && !seen[l] {
 			seen[l] = true
 			out = append(out, l)
 		}
 	}
 	return out
+}
+
+// baseLang lowercases a tag and reduces it to its base language: en-US to en.
+func baseLang(tag string) string {
+	l := strings.ToLower(strings.TrimSpace(tag))
+	if i := strings.IndexAny(l, "-_"); i >= 0 {
+		l = l[:i]
+	}
+	return l
 }
