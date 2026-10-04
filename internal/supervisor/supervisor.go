@@ -25,9 +25,17 @@ type Stats struct {
 // so the restarted loop continues with the next one.
 func Supervise[E any](ctx context.Context, name string, logger *slog.Logger,
 	in <-chan E, h events.Handler[E], restartDelay time.Duration, stats *Stats) {
+	if stats == nil {
+		stats = &Stats{}
+	}
 	for {
 		err := runRecovered(ctx, name, logger, in, h, stats)
-		if ctx.Err() != nil || err == nil {
+		if ctx.Err() != nil {
+			return
+		}
+		if err == nil {
+			// The queue closed. Say so, because the path has stopped consuming.
+			logger.Warn("handler loop ended, not restarting", "handler", name)
 			return
 		}
 		logger.Error("handler loop stopped, restarting", "handler", name, "error", err,

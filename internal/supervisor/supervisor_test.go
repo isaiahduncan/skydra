@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -130,5 +131,34 @@ func TestCleanReturnEndsSupervision(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("Supervise did not return after a clean exit")
+	}
+}
+
+func TestNilStatsDoesNotCrashOnPanic(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var mu sync.Mutex
+	runs := 0
+	h := fn[int](func(ctx context.Context, in <-chan int) error {
+		mu.Lock()
+		runs++
+		mu.Unlock()
+		panic("boom")
+	})
+	go Supervise[int](ctx, "x", quiet, make(chan int), h, time.Millisecond, nil)
+	waitFor(t, "a restart after the panic", func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return runs >= 2
+	})
+}
+
+func TestCleanExitIsLogged(t *testing.T) {
+	var buf strings.Builder
+	logger := slog.New(slog.NewTextHandler(&buf, nil))
+	h := fn[int](func(ctx context.Context, in <-chan int) error { return nil })
+	Supervise[int](context.Background(), "content", logger, make(chan int), h, time.Hour, &Stats{})
+	if !strings.Contains(buf.String(), "handler loop ended") {
+		t.Fatalf("expected a log line, got %q", buf.String())
 	}
 }
