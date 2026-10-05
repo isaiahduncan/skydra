@@ -26,6 +26,12 @@ type Alert struct {
 type target struct {
 	buckets map[int64]int // bucket index -> count
 	total   int
+	// alerted is true from the alert until the count falls back below the
+	// threshold. The counts are deliberately not cleared at the alert: one
+	// alert per burst is less noisy than re-alerting every N new events on a
+	// post that stays hot. The cost is an edge case. If the count dips just
+	// below the threshold and returns, it can alert again on mostly the same
+	// events. That is accepted for the prototype.
 	alerted bool
 }
 
@@ -88,6 +94,8 @@ func (h *Handler) evict(t *target, cur int64) {
 			delete(t.buckets, b)
 		}
 	}
+	// Re-arm only once the count has fallen below the threshold, so a target
+	// that stays above it alerts once, not repeatedly.
 	if t.total < h.threshold {
 		t.alerted = false
 	}
@@ -129,7 +137,8 @@ func (h *Handler) Handle(ev events.EngagementEvent) {
 	t.buckets[cur]++
 	t.total++
 	// Alert only on the increment that crosses the threshold, then stay
-	// silent until the count falls back below it.
+	// silent until the count falls back below it. The buckets are kept, not
+	// reset, to keep alerts quiet. See the note on target.alerted.
 	if t.total >= h.threshold && !t.alerted {
 		t.alerted = true
 		h.alert(Alert{Target: ev.TargetURI, Count: t.total, Threshold: h.threshold, Window: h.window})
