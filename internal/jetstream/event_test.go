@@ -7,7 +7,7 @@ func TestParseAndRecordHelpers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if e.DID != "did:plc:x" || e.TimeUS != 42 || e.Identity() != "did:plc:x|app.bsky.feed.post|r" {
+	if e.DID != "did:plc:x" || e.TimeUS != 42 || e.Identity() != "did:plc:x|app.bsky.feed.post|r|create" {
 		t.Fatalf("unexpected event %+v identity=%q", e, e.Identity())
 	}
 	text, langs := PostText(e.Commit.Record)
@@ -40,5 +40,17 @@ func TestParseRejectsGarbage(t *testing.T) {
 func TestIdentityEmptyWithoutCommit(t *testing.T) {
 	if (Event{Kind: "identity"}).Identity() != "" {
 		t.Fatal("identity events have no identity key")
+	}
+}
+
+func TestIdentityDiffersByOperation(t *testing.T) {
+	create := Event{DID: "d", Commit: &Commit{Operation: OpCreate, Collection: CollPost, RKey: "r"}}
+	del := Event{DID: "d", Commit: &Commit{Operation: OpDelete, Collection: CollPost, RKey: "r"}}
+	if create.Identity() == del.Identity() {
+		t.Fatal("a create and a delete of the same record must have different identities")
+	}
+	same := Event{DID: "d", Commit: &Commit{Operation: OpCreate, Collection: CollPost, RKey: "r"}}
+	if create.Identity() != same.Identity() {
+		t.Fatal("identical events must have the same identity")
 	}
 }

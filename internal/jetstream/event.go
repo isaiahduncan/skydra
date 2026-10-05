@@ -43,13 +43,15 @@ func Parse(b []byte) (Event, error) {
 	return e, nil
 }
 
-// Identity is the (actor, collection, record key) of a commit event. It is
-// empty for events that carry no commit.
+// Identity is the (actor, collection, record key, operation) of a commit
+// event. The operation is part of the key so that a create and a later update
+// or delete of the same record at one time_us are not mistaken for replays of
+// each other. It is empty for events that carry no commit.
 func (e Event) Identity() string {
 	if e.Commit == nil {
 		return ""
 	}
-	return e.DID + "|" + e.Commit.Collection + "|" + e.Commit.RKey
+	return e.DID + "|" + e.Commit.Collection + "|" + e.Commit.RKey + "|" + e.Commit.Operation
 }
 
 // Record shapes, reduced to the fields the router reads.
