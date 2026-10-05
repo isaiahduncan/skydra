@@ -10,6 +10,9 @@ rendered=$(kubectl kustomize "$OVERLAY")
 
 if command -v kubeconform >/dev/null; then
   echo "$rendered" | kubeconform -strict -summary -
+elif [ "${REQUIRE_KUBECONFORM:-}" = "1" ]; then
+  echo "kubeconform is required (REQUIRE_KUBECONFORM=1) but not installed" >&2
+  exit 1
 else
   echo "kubeconform not installed, skipping schema validation" >&2
 fi
