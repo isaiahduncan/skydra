@@ -188,3 +188,28 @@ func TestMaxBackoffIsNeverBelowMinBackoff(t *testing.T) {
 		t.Fatalf("defaults = %v/%v", c.MinBackoff, c.MaxBackoff)
 	}
 }
+
+func opMsg(op string, us int64) string {
+	return fmt.Sprintf(`{"did":"a","time_us":%d,"kind":"commit","commit":{"operation":%q,"collection":"app.bsky.feed.post","rkey":"r"}}`, us, op)
+}
+
+// A create and a delete of the same record at one time_us are different
+// events: both are delivered, and on a resume both replays are skipped.
+func TestSameRecordDifferentOperationsAreNotDuplicates(t *testing.T) {
+	url, _ := server(t,
+		func(c *websocket.Conn) {
+			send(c, opMsg("create", 100), opMsg("delete", 100))
+			c.Close(websocket.StatusNormalClosure, "")
+		},
+		func(c *websocket.Conn) {
+			send(c, opMsg("create", 100), opMsg("delete", 100), msg("b", 200, "9"))
+			<-time.After(2 * time.Second)
+		},
+	)
+	s := &sink{}
+	run(t, NewReader(Config{URL: url, MinBackoff: time.Millisecond, MaxBackoff: 5 * time.Millisecond}, s, quiet))
+	waitFor(t, "the later event", func() bool { return len(s.ids()) == 3 })
+	if got := s.ids(); len(got) != 3 {
+		t.Fatalf("events = %v, want create, delete and one new event", got)
+	}
+}
