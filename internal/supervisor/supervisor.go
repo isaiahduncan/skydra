@@ -23,8 +23,15 @@ type Stats struct {
 // after each panic or unexpected error. It blocks, so run it in a goroutine.
 // The poison event was already taken off the queue when the handler panicked,
 // so the restarted loop continues with the next one.
-func Supervise[E any](ctx context.Context, name string, logger *slog.Logger,
-	in <-chan E, h events.Handler[E], restartDelay time.Duration, stats *Stats) {
+func Supervise[E any](
+	ctx context.Context,
+	name string,
+	logger *slog.Logger,
+	in <-chan E,
+	h events.Handler[E],
+	restartDelay time.Duration,
+	stats *Stats,
+) {
 	if stats == nil {
 		stats = &Stats{}
 	}
@@ -38,8 +45,12 @@ func Supervise[E any](ctx context.Context, name string, logger *slog.Logger,
 			logger.Warn("handler loop ended, not restarting", "handler", name)
 			return
 		}
-		logger.Error("handler loop stopped, restarting", "handler", name, "error", err,
-			"restart_delay", restartDelay.String())
+		logger.Error(
+			"handler loop stopped, restarting",
+			"handler", name,
+			"error", err,
+			"restart_delay", restartDelay.String(),
+		)
 		select {
 		case <-ctx.Done():
 			return
@@ -48,13 +59,23 @@ func Supervise[E any](ctx context.Context, name string, logger *slog.Logger,
 	}
 }
 
-func runRecovered[E any](ctx context.Context, name string, logger *slog.Logger,
-	in <-chan E, h events.Handler[E], stats *Stats) (err error) {
+func runRecovered[E any](
+	ctx context.Context,
+	name string,
+	logger *slog.Logger,
+	in <-chan E,
+	h events.Handler[E],
+	stats *Stats,
+) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			stats.Panics.Add(1)
-			logger.Error("handler panic recovered", "handler", name, "panic", fmt.Sprint(r),
-				"stack", string(debug.Stack()))
+			logger.Error(
+				"handler panic recovered",
+				"handler", name,
+				"panic", fmt.Sprint(r),
+				"stack", string(debug.Stack()),
+			)
 			err = fmt.Errorf("panic: %v", r)
 		}
 	}()
