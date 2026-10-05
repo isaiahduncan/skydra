@@ -52,6 +52,11 @@ type Queues struct {
 
 type Router struct {
 	q        Queues
+	// discards counts events the router itself throws away: the path has no
+	// enabled handler, or no path matched. It is kept apart from the queue drop
+	// counters on purpose. A disabled path has no queue, so it only ever shows
+	// discards, and a full queue only ever shows drops, so a disabled handler is
+	// never mistaken for an overloaded one.
 	discards map[Path]*counter
 }
 
@@ -108,6 +113,9 @@ func (r *Router) Route(e jetstream.Event) {
 		})
 		return
 	}
+	// Reached only when nothing was enqueued: a disabled path or no match. This
+	// is a discard, not a drop. Drops are counted by each path's queue when it
+	// is full.
 	r.discards[p].add()
 }
 
