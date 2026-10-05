@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"net/url"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -53,6 +54,7 @@ type Reader struct {
 	logger *slog.Logger
 
 	lastTimeUS int64
+	ready      atomic.Bool
 	// seen holds the identities of events already handled at lastTimeUS. The
 	// resume cursor is inclusive, so a resume replays every event at that
 	// time_us and delivery is at-least-once.
@@ -63,6 +65,9 @@ func NewReader(cfg Config, sink Sink, logger *slog.Logger) *Reader {
 	cfg.defaults()
 	return &Reader{cfg: cfg, sink: sink, logger: logger, seen: map[string]struct{}{}}
 }
+
+// Ready reports whether the reader currently has a live connection.
+func (r *Reader) Ready() bool { return r.ready.Load() }
 
 // Cursor is the last time_us read, 0 before the first event.
 func (r *Reader) Cursor() int64 { return r.lastTimeUS }
@@ -125,6 +130,8 @@ func (r *Reader) session(ctx context.Context) (got bool, err error) {
 		return false, err
 	}
 	defer conn.CloseNow()
+	r.ready.Store(true)
+	defer r.ready.Store(false) // not ready while disconnected or backing off
 	conn.SetReadLimit(1 << 20)
 	r.logger.Info("jetstream connected", "cursor", r.lastTimeUS)
 

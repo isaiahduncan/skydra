@@ -189,6 +189,25 @@ func TestMaxBackoffIsNeverBelowMinBackoff(t *testing.T) {
 	}
 }
 
+// Readiness follows the live connection: true while connected, false once it
+// drops and the reader is backing off.
+func TestReadyFollowsConnectionState(t *testing.T) {
+	release := make(chan struct{})
+	url, _ := server(t, func(c *websocket.Conn) {
+		send(c, msg("a", 1, "1"))
+		<-release
+		c.Close(websocket.StatusNormalClosure, "")
+	})
+	r := NewReader(Config{URL: url, MinBackoff: time.Minute, MaxBackoff: time.Minute}, &sink{}, quiet)
+	if r.Ready() {
+		t.Fatal("ready before connecting")
+	}
+	run(t, r)
+	waitFor(t, "ready", r.Ready)
+	close(release)
+	waitFor(t, "not ready after the connection drops", func() bool { return !r.Ready() })
+}
+
 func opMsg(op string, us int64) string {
 	return fmt.Sprintf(`{"did":"a","time_us":%d,"kind":"commit","commit":{"operation":%q,"collection":"app.bsky.feed.post","rkey":"r"}}`, us, op)
 }
