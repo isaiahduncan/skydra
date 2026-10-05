@@ -1,0 +1,25 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+  - namespace.yaml
+
+# Everything lives in this one namespace.
+namespace: skydra-dev
+
+# Local kind image. `make kind-load` (see README) builds and loads this tag.
+# The release workflow publishes ghcr.io/isaiahduncan/skydra:sha-<short-sha>.
+images:
+  - name: ghcr.io/isaiahduncan/skydra
+    newTag: dev
+
+patches:
+  # The image is loaded into kind, never pulled from a registry.
+  - target:
+      kind: Deployment
+      name: skydra
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: IfNotPresent
