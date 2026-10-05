@@ -63,8 +63,11 @@ func New(window time.Duration, threshold int, logger *slog.Logger, now func() ti
 		window += BucketWidth - rem
 	}
 	return &Handler{
-		window: window, threshold: threshold, now: now, alert: alert,
-		targets: map[string]*target{},
+		window:    window,
+		threshold: threshold,
+		now:       now,
+		alert:     alert,
+		targets:   map[string]*target{},
 	}
 }
 
