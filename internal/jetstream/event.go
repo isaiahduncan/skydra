@@ -54,12 +54,7 @@ func (e Event) Identity() string {
 	return e.DID + "|" + e.Commit.Collection + "|" + e.Commit.RKey + "|" + e.Commit.Operation
 }
 
-// Record shapes, reduced to the fields the router reads.
-
-type postRecord struct {
-	Text  string   `json:"text"`
-	Langs []string `json:"langs"`
-}
+// Record readers, reduced to the fields the router needs.
 
 // SubjectURI reads subject.uri (likes, reposts). Empty if absent.
 func SubjectURI(raw json.RawMessage) string {
@@ -87,9 +82,12 @@ func SubjectDID(raw json.RawMessage) string {
 
 // PostText returns the text and language tags of a post record.
 func PostText(raw json.RawMessage) (string, []string) {
-	var p postRecord
-	if json.Unmarshal(raw, &p) != nil {
+	var r struct {
+		Text  string   `json:"text"`
+		Langs []string `json:"langs"`
+	}
+	if json.Unmarshal(raw, &r) != nil {
 		return "", nil
 	}
-	return p.Text, p.Langs
+	return r.Text, r.Langs
 }
