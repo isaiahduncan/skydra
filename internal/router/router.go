@@ -51,7 +51,7 @@ type Queues struct {
 }
 
 type Router struct {
-	q        Queues
+	q Queues
 	// discards counts events the router itself throws away: the path has no
 	// enabled handler, or no path matched. It is kept apart from the queue drop
 	// counters on purpose. A disabled path has no queue, so it only ever shows
