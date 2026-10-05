@@ -3,6 +3,8 @@
 package router
 
 import (
+	"sync/atomic"
+
 	"github.com/isaiahduncan/skydra/internal/events"
 	"github.com/isaiahduncan/skydra/internal/jetstream"
 	"github.com/isaiahduncan/skydra/internal/queue"
@@ -91,8 +93,10 @@ func (r *Router) Route(e jetstream.Event) {
 			break
 		}
 		r.q.Graph.Offer(events.FollowCreated{
-			Follower: e.DID, Followee: jetstream.SubjectDID(e.Commit.Record),
-			RKey: e.Commit.RKey, TimeUS: e.TimeUS,
+			Follower: e.DID,
+			Followee: jetstream.SubjectDID(e.Commit.Record),
+			RKey:     e.Commit.RKey,
+			TimeUS:   e.TimeUS,
 		})
 		return
 	case PathRetraction:
@@ -133,3 +137,9 @@ func (r *Router) Drops(p Path) uint64 {
 	}
 	return 0
 }
+
+// counter is a goroutine-safe count, used for the per-path discard counters.
+type counter struct{ n atomic.Uint64 }
+
+func (c *counter) add()         { c.n.Add(1) }
+func (c *counter) load() uint64 { return c.n.Load() }

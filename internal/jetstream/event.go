@@ -28,13 +28,17 @@ type Event struct {
 }
 
 type Commit struct {
-	Operation  string          `json:"operation"`
-	Collection string          `json:"collection"`
-	RKey       string          `json:"rkey"`
-	Record     json.RawMessage `json:"record,omitempty"`
+	Operation  string `json:"operation"`
+	Collection string `json:"collection"`
+	RKey       string `json:"rkey"`
+	// Record is a json.RawMessage so the first parse leaves it undecoded. Its
+	// shape depends on the collection (a post, a like and a follow all differ),
+	// and most events never need it. The readers below decode it on demand.
+	Record json.RawMessage `json:"record,omitempty"`
 }
 
-// Parse decodes one Jetstream message.
+// Parse decodes one Jetstream message. It takes the whole message as raw bytes,
+// exactly as read off the WebSocket, so the parameter is a plain []byte.
 func Parse(b []byte) (Event, error) {
 	var e Event
 	if err := json.Unmarshal(b, &e); err != nil {
@@ -54,7 +58,10 @@ func (e Event) Identity() string {
 	return e.DID + "|" + e.Commit.Collection + "|" + e.Commit.RKey + "|" + e.Commit.Operation
 }
 
-// Record readers, reduced to the fields the router needs.
+// Record readers, reduced to the fields the router needs. Each takes
+// Commit.Record, which is why the parameter is a json.RawMessage: it is a JSON
+// fragment, not a whole message. A []byte would behave the same. Each returns
+// empty values, not an error, when the record is missing or malformed.
 
 // SubjectURI reads subject.uri (likes, reposts). Empty if absent.
 func SubjectURI(raw json.RawMessage) string {
