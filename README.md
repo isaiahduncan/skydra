@@ -121,4 +121,117 @@ go test ./...
 go vet ./...
 ```
 
-Further sections (running on kind, configuration) are added as features land.
+## Running on kind
+
+[kind](https://kind.sigs.k8s.io/) runs a Kubernetes cluster inside Docker
+containers on your machine. These steps build the image, load it into the
+cluster and deploy the service into the `skydra-dev` namespace.
+
+**Prerequisites:** Docker running, plus `kind` and `kubectl`. See "How to run
+locally" above for the install commands. Check them with:
+
+```sh
+docker info
+kind version
+kubectl version --client
+```
+
+Run everything from the repo root. The commands work as written in PowerShell,
+bash and zsh.
+
+### 1. Create the cluster
+
+```sh
+kind create cluster --config k8s/kind/cluster.yaml
+```
+
+This creates a cluster named `skydra` and points `kubectl` at it (the context is
+`kind-skydra`).
+
+### 2. Build the image and load it into the cluster
+
+```sh
+docker build -t ghcr.io/isaiahduncan/skydra:dev .
+kind load docker-image ghcr.io/isaiahduncan/skydra:dev --name skydra
+```
+
+The cluster cannot see images on your machine until they are loaded. Keep
+`--name skydra`: without it the image goes to a cluster named `kind`, and the pod
+ends up in `ImagePullBackOff`.
+
+### 3. Deploy
+
+```sh
+kubectl apply -k k8s/overlays/dev
+kubectl -n skydra-dev rollout status deployment/skydra --timeout=120s
+```
+
+This creates the `skydra-dev` namespace, a ConfigMap and the Deployment. The
+rollout finishes once the pod is Ready, which happens after it connects to
+Jetstream.
+
+### 4. Watch it work
+
+```sh
+kubectl -n skydra-dev logs -f deployment/skydra
+```
+
+In the logs, look for:
+
+- `"msg":"notification"` from the content handler (actor, time, matched keyword).
+- `"msg":"engagement alert"` once a post reaches the like and repost threshold.
+- `"msg":"path counters"` every 10 seconds: per path, `drops` (queue was full)
+  and `discards` (no handler enabled or no path matched).
+
+Other useful commands:
+
+```sh
+kubectl -n skydra-dev get pods                    # READY should read 1/1
+kubectl -n skydra-dev describe pod -l app=skydra  # events, if the pod is not starting
+```
+
+The pod needs outbound access to the public Jetstream endpoint. There is no
+Service, because nothing calls the pod. The Deployment has one replica and uses
+the `Recreate` strategy, so two pods never read the stream at once.
+
+### Changing settings
+
+To see alerts sooner, lower the threshold and window in `k8s/base/skydra.env`
+(for example `SKYDRA_ENGAGEMENT_THRESHOLD=5` and `SKYDRA_ENGAGEMENT_WINDOW=30s`)
+and apply again:
+
+```sh
+kubectl apply -k k8s/overlays/dev
+```
+
+The ConfigMap name carries a content hash, so a settings change rolls the pod by
+itself.
+
+### Changing the code
+
+The image tag stays `dev`, so applying again does not restart the pod. Rebuild,
+reload and restart it:
+
+```sh
+docker build -t ghcr.io/isaiahduncan/skydra:dev .
+kind load docker-image ghcr.io/isaiahduncan/skydra:dev --name skydra
+kubectl -n skydra-dev rollout restart deployment/skydra
+```
+
+### Clean up
+
+```sh
+kind delete cluster --name skydra
+```
+
+### Make shortcuts
+
+The Makefile wraps the same commands, if you have `make` (Linux, macOS or WSL):
+
+| Command | Does |
+| --- | --- |
+| `make kind-up` | step 1, create the cluster |
+| `make kind-load` | step 2, build the image and load it |
+| `make deploy` | step 3, apply and wait for the rollout |
+| `make logs` | step 4, follow the logs |
+| `make kind-down` | clean up |
