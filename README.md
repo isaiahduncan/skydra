@@ -20,6 +20,9 @@ The design lives in the dev spec (DESIGN.md). In short:
 | `cmd/skydra` | binary entrypoint |
 | `internal/...` | ingester, router, queues, handlers |
 | `k8s/` | Kustomize manifests (namespace `skydra-dev`) |
+| `Makefile` | shortcuts for the tests and the kind workflow (macOS, Linux, WSL) |
+| `scripts/kind.ps1` | the same kind workflow for Windows PowerShell |
+| `scripts/validate-k8s.sh` | renders and checks the manifests (needs bash) |
 | `.github/workflows` | CI and release pipelines |
 
 ## How to run locally
@@ -52,9 +55,16 @@ sudo apt install git make build-essential
 curl -fsSL https://get.docker.com | sh   # optional, only needed to build the image
 ```
 
-To run on Kubernetes with kind, also install `kind` and `kubectl`
-(`winget install Kubernetes.kind Kubernetes.kubectl` on Windows,
-`brew install kind kubectl` on macOS).
+To run on Kubernetes with kind, also install `kind` and `kubectl`.
+
+On Windows (PowerShell), one command per tool:
+
+```powershell
+winget install Kubernetes.kind
+winget install Kubernetes.kubectl
+```
+
+On macOS: `brew install kind kubectl`.
 
 ### 2. Get the code
 
@@ -83,6 +93,13 @@ $env:SKYDRA_ENGAGEMENT_THRESHOLD="3"
 $env:SKYDRA_ENGAGEMENT_WINDOW="30s"
 $env:SKYDRA_COUNTER_INTERVAL="5s"
 go run ./cmd/skydra
+```
+
+The `$env:` settings last until you close that PowerShell window, so any later
+`go run` in the same window uses them too. To clear them, open a new window or run:
+
+```powershell
+Remove-Item Env:SKYDRA_ENGAGEMENT_THRESHOLD, Env:SKYDRA_ENGAGEMENT_WINDOW, Env:SKYDRA_COUNTER_INTERVAL
 ```
 
 ```sh
@@ -138,6 +155,10 @@ kubectl version --client
 
 Run everything from the repo root. The commands work as written in PowerShell,
 bash and zsh.
+
+In a hurry? The Makefile (macOS, Linux, WSL) and `scripts/kind.ps1` (Windows
+PowerShell) wrap these steps. On Windows, `.\scripts\kind.ps1 all` runs steps 1
+to 3. See "Shortcuts" at the end of this section.
 
 ### 1. Create the cluster
 
@@ -224,14 +245,42 @@ kubectl -n skydra-dev rollout restart deployment/skydra
 kind delete cluster --name skydra
 ```
 
-### Make shortcuts
+### Shortcuts: Makefile and PowerShell script
 
-The Makefile wraps the same commands, if you have `make` (Linux, macOS or WSL):
+The steps above are wrapped twice, so you can use whichever fits your shell:
 
-| Command | Does |
-| --- | --- |
-| `make kind-up` | step 1, create the cluster |
-| `make kind-load` | step 2, build the image and load it |
-| `make deploy` | step 3, apply and wait for the rollout |
-| `make logs` | step 4, follow the logs |
-| `make kind-down` | clean up |
+- **`Makefile`** for macOS, Linux and WSL. It needs `make` (`sudo apt install make`
+  on Ubuntu or WSL).
+- **`scripts/kind.ps1`** for Windows PowerShell. It needs only PowerShell, Docker,
+  kind and kubectl.
+
+| What | Makefile | PowerShell script |
+| --- | --- | --- |
+| 1. Create the cluster | `make kind-up` | `.\scripts\kind.ps1 up` |
+| 2. Build the image and load it | `make kind-load` | `.\scripts\kind.ps1 load` |
+| 3. Deploy and wait for the rollout | `make deploy` | `.\scripts\kind.ps1 deploy` |
+| Steps 1 to 3 in one go | | `.\scripts\kind.ps1 all` |
+| 4. Follow the logs | `make logs` | `.\scripts\kind.ps1 logs` |
+| After changing the code | | `.\scripts\kind.ps1 restart` |
+| Clean up | `make kind-down` | `.\scripts\kind.ps1 down` |
+| Run the tests | `make test` | `.\scripts\kind.ps1 test` |
+| Check the manifests | `make validate-k8s` | `.\scripts\kind.ps1 validate` (needs bash) |
+
+Quick start on Windows:
+
+```powershell
+.\scripts\kind.ps1 all
+.\scripts\kind.ps1 logs
+```
+
+Notes on the script:
+
+- If PowerShell says running scripts is disabled, run it once with
+  `powershell -ExecutionPolicy Bypass -File .\scripts\kind.ps1 all`, or allow
+  local scripts for your user with
+  `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
+- `.\scripts\kind.ps1 help` lists every command. Add `-DryRun` to print the
+  commands without running them.
+- It skips creating the cluster if `skydra` already exists, and it always targets
+  the `kind-skydra` kubectl context, so it never touches another cluster.
+- `test` runs without `-race`. Add `-Race` if you have a C compiler (`gcc`).
