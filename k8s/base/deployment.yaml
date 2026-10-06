@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: skydra
+spec:
+  # One reader, one cursor: never run two replicas of this prototype.
+  replicas: 1
+  # Recreate, not RollingUpdate, so two pods never read the stream at once.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: skydra
+  template:
+    metadata:
+      labels:
+        app: skydra
+    spec:
+      containers:
+        - name: skydra
+          image: ghcr.io/isaiahduncan/skydra
+          envFrom:
+            - configMapRef:
+                name: skydra-config
+          # There is no Service: nothing calls the pod. The port exists so the
+          # kubelet probes have a target.
+          ports:
+            - name: http
+              containerPort: 8080
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          # Ready once the first Jetstream connection succeeds.
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+            seccompProfile:
+              type: RuntimeDefault

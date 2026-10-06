@@ -20,6 +20,9 @@ The design lives in the dev spec (DESIGN.md). In short:
 | `cmd/skydra` | binary entrypoint |
 | `internal/...` | ingester, router, queues, handlers |
 | `k8s/` | Kustomize manifests (namespace `skydra-dev`) |
+| `Makefile` | shortcuts for the tests and the kind workflow (macOS, Linux, WSL) |
+| `scripts/kind.ps1` | the same kind workflow for Windows PowerShell |
+| `scripts/validate-k8s.sh` | renders and checks the manifests (needs bash) |
 | `.github/workflows` | CI and release pipelines |
 
 ## How to run locally
@@ -52,9 +55,16 @@ sudo apt install git make build-essential
 curl -fsSL https://get.docker.com | sh   # optional, only needed to build the image
 ```
 
-To run on Kubernetes with kind, also install `kind` and `kubectl`
-(`winget install Kubernetes.kind Kubernetes.kubectl` on Windows,
-`brew install kind kubectl` on macOS).
+To run on Kubernetes with kind, also install `kind` and `kubectl`.
+
+On Windows (PowerShell), one command per tool:
+
+```powershell
+winget install Kubernetes.kind
+winget install Kubernetes.kubectl
+```
+
+On macOS: `brew install kind kubectl`.
 
 ### 2. Get the code
 
@@ -83,6 +93,13 @@ $env:SKYDRA_ENGAGEMENT_THRESHOLD="3"
 $env:SKYDRA_ENGAGEMENT_WINDOW="30s"
 $env:SKYDRA_COUNTER_INTERVAL="5s"
 go run ./cmd/skydra
+```
+
+The `$env:` settings last until you close that PowerShell window, so any later
+`go run` in the same window uses them too. To clear them, open a new window or run:
+
+```powershell
+Remove-Item Env:SKYDRA_ENGAGEMENT_THRESHOLD, Env:SKYDRA_ENGAGEMENT_WINDOW, Env:SKYDRA_COUNTER_INTERVAL
 ```
 
 ```sh
@@ -121,4 +138,149 @@ go test ./...
 go vet ./...
 ```
 
-Further sections (running on kind, configuration) are added as features land.
+## Running on kind
+
+[kind](https://kind.sigs.k8s.io/) runs a Kubernetes cluster inside Docker
+containers on your machine. These steps build the image, load it into the
+cluster and deploy the service into the `skydra-dev` namespace.
+
+**Prerequisites:** Docker running, plus `kind` and `kubectl`. See "How to run
+locally" above for the install commands. Check them with:
+
+```sh
+docker info
+kind version
+kubectl version --client
+```
+
+Run everything from the repo root. The commands work as written in PowerShell,
+bash and zsh.
+
+In a hurry? The Makefile (macOS, Linux, WSL) and `scripts/kind.ps1` (Windows
+PowerShell) wrap these steps. On Windows, `.\scripts\kind.ps1 all` runs steps 1
+to 3. See "Shortcuts" at the end of this section.
+
+### 1. Create the cluster
+
+```sh
+kind create cluster --config k8s/kind/cluster.yaml
+```
+
+This creates a cluster named `skydra` and points `kubectl` at it (the context is
+`kind-skydra`).
+
+### 2. Build the image and load it into the cluster
+
+```sh
+docker build -t ghcr.io/isaiahduncan/skydra:dev .
+kind load docker-image ghcr.io/isaiahduncan/skydra:dev --name skydra
+```
+
+The cluster cannot see images on your machine until they are loaded. Keep
+`--name skydra`: without it the image goes to a cluster named `kind`, and the pod
+ends up in `ImagePullBackOff`.
+
+### 3. Deploy
+
+```sh
+kubectl apply -k k8s/overlays/dev
+kubectl -n skydra-dev rollout status deployment/skydra --timeout=120s
+```
+
+This creates the `skydra-dev` namespace, a ConfigMap and the Deployment. The
+rollout finishes once the pod is Ready, which happens after it connects to
+Jetstream.
+
+### 4. Watch it work
+
+```sh
+kubectl -n skydra-dev logs -f deployment/skydra
+```
+
+In the logs, look for:
+
+- `"msg":"notification"` from the content handler (actor, time, matched keyword).
+- `"msg":"engagement alert"` once a post reaches the like and repost threshold.
+- `"msg":"path counters"` every 10 seconds: per path, `drops` (queue was full)
+  and `discards` (no handler enabled or no path matched).
+
+Other useful commands:
+
+```sh
+kubectl -n skydra-dev get pods                    # READY should read 1/1
+kubectl -n skydra-dev describe pod -l app=skydra  # events, if the pod is not starting
+```
+
+The pod needs outbound access to the public Jetstream endpoint. There is no
+Service, because nothing calls the pod. The Deployment has one replica and uses
+the `Recreate` strategy, so two pods never read the stream at once.
+
+### Changing settings
+
+To see alerts sooner, lower the threshold and window in `k8s/base/skydra.env`
+(for example `SKYDRA_ENGAGEMENT_THRESHOLD=5` and `SKYDRA_ENGAGEMENT_WINDOW=30s`)
+and apply again:
+
+```sh
+kubectl apply -k k8s/overlays/dev
+```
+
+The ConfigMap name carries a content hash, so a settings change rolls the pod by
+itself.
+
+### Changing the code
+
+The image tag stays `dev`, so applying again does not restart the pod. Rebuild,
+reload and restart it:
+
+```sh
+docker build -t ghcr.io/isaiahduncan/skydra:dev .
+kind load docker-image ghcr.io/isaiahduncan/skydra:dev --name skydra
+kubectl -n skydra-dev rollout restart deployment/skydra
+```
+
+### Clean up
+
+```sh
+kind delete cluster --name skydra
+```
+
+### Shortcuts: Makefile and PowerShell script
+
+The steps above are wrapped twice, so you can use whichever fits your shell:
+
+- **`Makefile`** for macOS, Linux and WSL. It needs `make` (`sudo apt install make`
+  on Ubuntu or WSL).
+- **`scripts/kind.ps1`** for Windows PowerShell. It needs only PowerShell, Docker,
+  kind and kubectl.
+
+| What | Makefile | PowerShell script |
+| --- | --- | --- |
+| 1. Create the cluster | `make kind-up` | `.\scripts\kind.ps1 up` |
+| 2. Build the image and load it | `make kind-load` | `.\scripts\kind.ps1 load` |
+| 3. Deploy and wait for the rollout | `make deploy` | `.\scripts\kind.ps1 deploy` |
+| Steps 1 to 3 in one go | | `.\scripts\kind.ps1 all` |
+| 4. Follow the logs | `make logs` | `.\scripts\kind.ps1 logs` |
+| After changing the code | | `.\scripts\kind.ps1 restart` |
+| Clean up | `make kind-down` | `.\scripts\kind.ps1 down` |
+| Run the tests | `make test` | `.\scripts\kind.ps1 test` |
+| Check the manifests | `make validate-k8s` | `.\scripts\kind.ps1 validate` (needs bash) |
+
+Quick start on Windows:
+
+```powershell
+.\scripts\kind.ps1 all
+.\scripts\kind.ps1 logs
+```
+
+Notes on the script:
+
+- If PowerShell says running scripts is disabled, run it once with
+  `powershell -ExecutionPolicy Bypass -File .\scripts\kind.ps1 all`, or allow
+  local scripts for your user with
+  `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
+- `.\scripts\kind.ps1 help` lists every command. Add `-DryRun` to print the
+  commands without running them.
+- It skips creating the cluster if `skydra` already exists, and it always targets
+  the `kind-skydra` kubectl context, so it never touches another cluster.
+- `test` runs without `-race`. Add `-Race` if you have a C compiler (`gcc`).
