@@ -47,7 +47,10 @@ func run(logger *slog.Logger) error {
 	)
 	start := func(fn func()) {
 		wg.Add(1)
-		go func() { defer wg.Done(); fn() }()
+		go func() {
+			defer wg.Done()
+			fn()
+		}()
 	}
 
 	if cfg.EnabledHandlers[config.HandlerContent] {
