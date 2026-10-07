@@ -7,23 +7,33 @@ and runs on Kubernetes (kind for local development).
 The design lives in the dev spec (DESIGN.md). In short:
 
 - One ingester holds the single Jetstream connection and a router.
-- Each path has its own bounded queue and its own handler loop (goroutine).
+- Each path has its own bounded queue and its own handler loop (goroutine). A
+  slow handler fills only its own queue, and a panic in one is recovered
+  without touching the others.
 - Handlers built in the prototype: **content** (keyword notifications) and
   **engagement** (rolling like/repost counts with threshold alerts).
-- Graph and retraction handlers are specified, not built.
-- Downstream work is simulated with structured JSON logs (`log/slog`).
+- Graph and retraction handlers are specified, not built. Their events are
+  counted and discarded at the router.
+- Downstream work is simulated with structured JSON logs (`log/slog`). Post
+  text is read only to match keywords and is never logged.
 
 ## Layout
 
 | Path | Purpose |
 | --- | --- |
-| `cmd/skydra` | binary entrypoint |
-| `internal/...` | ingester, router, queues, handlers |
-| `k8s/` | Kustomize manifests (namespace `skydra-dev`) |
+| `cmd/skydra` | binary entrypoint, wiring and health probes |
+| `internal/jetstream` | Jetstream wire format (the only place that knows it) |
+| `internal/ingester` | WebSocket reader: reconnect, cursor resume, replay dedupe, counters report |
+| `internal/router` | classifies events and enqueues them without blocking |
+| `internal/queue` | bounded per-path queue, drops the newest event when full |
+| `internal/handlers/content`, `.../engagement` | the two built handlers |
+| `internal/supervisor` | panic recovery and delayed restart of a handler loop |
+| `internal/config` | env-based configuration |
+| `k8s/` | Kustomize manifests, one namespace: `skydra-dev` |
 | `Makefile` | shortcuts for the tests and the kind workflow (macOS, Linux, WSL) |
 | `scripts/kind.ps1` | the same kind workflow for Windows PowerShell |
 | `scripts/validate-k8s.sh` | renders and checks the manifests (needs bash) |
-| `.github/workflows` | CI and release pipelines |
+| `.github/workflows` | CI and image release pipelines |
 
 ## How to run locally
 
@@ -134,8 +144,9 @@ docker run --rm -p 8080:8080 -e SKYDRA_ENGAGEMENT_THRESHOLD=3 skydra:dev
 ## Development
 
 ```sh
-go test ./...
-go vet ./...
+make test          # go test -race ./...
+make vet
+make validate-k8s  # render the dev overlay, check schema and the single namespace
 ```
 
 ## Running on kind
@@ -284,3 +295,37 @@ Notes on the script:
 - It skips creating the cluster if `skydra` already exists, and it always targets
   the `kind-skydra` kubectl context, so it never touches another cluster.
 - `test` runs without `-race`. Add `-Race` if you have a C compiler (`gcc`).
+## Configuration
+
+Environment variables, supplied by the ConfigMap (`k8s/base/skydra.env`):
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `SKYDRA_ENABLED_HANDLERS` | `content,engagement` | handler loops to run |
+| `SKYDRA_JETSTREAM_URL` | `wss://jetstream2.us-east.bsky.network/subscribe` | endpoint |
+| `SKYDRA_WANTED_COLLECTIONS` | _(unset, unfiltered)_ | optional server-side filter, comma separated |
+| `SKYDRA_KEYWORDS` | `{"en":["love"]}` | language code to keywords; keys double as the language filter |
+| `SKYDRA_ENGAGEMENT_WINDOW` | `60s` | sliding window (5 second buckets) |
+| `SKYDRA_ENGAGEMENT_THRESHOLD` | `100` | likes + reposts per target that raise an alert |
+| `SKYDRA_QUEUE_SIZE` | `1024` | per-path queue size |
+| `SKYDRA_COUNTER_INTERVAL` | `10s` | how often drop/discard counters are logged |
+| `SKYDRA_READ_TIMEOUT` | `30s` | read deadline that detects a silent connection |
+| `SKYDRA_HANDLER_RESTART_DELAY` | `1s` | delay before a panicked handler loop restarts |
+| `SKYDRA_HTTP_ADDR` | `:8080` | `/healthz` and `/readyz` (ready after the first connection) |
+
+## CI and release
+
+- `.github/workflows/ci.yaml` runs on pull requests to `main` and pushes to
+  `main`: gofmt, `go vet`, `go test -race`, manifest validation, and a Docker
+  build that is not pushed.
+- `.github/workflows/docker-publish.yaml` runs on pushes to `main`: tests, then
+  builds and pushes `ghcr.io/isaiahduncan/skydra:sha-<short-sha>` and `:latest`.
+- There is no CD pipeline. Deploy by hand as above.
+
+## Known limits (prototype)
+
+All paths share one process, so an OOM stops every path. The ingester is a
+single reader and keeps its cursor in memory, so a restart resumes live, and
+events that arrive while it is down or that a full queue cannot hold are lost.
+The spec's Production subsections describe the per-handler pods, Kafka
+transport and Redis-backed counts that remove these limits.
