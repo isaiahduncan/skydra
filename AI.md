@@ -8,7 +8,7 @@ How I used AI agents on the Zenity take-home: the tools, the setup, the prompts 
 
 | Tool | Model | Used for |
 | --- | --- | --- |
-| Claude (claude.ai app, Project "Zenity interview") | Claude Sonnet 5.5 in the latest sessions; confirm earlier ones | Reading the brief, scoping, and the whole design discussion: pods vs. in-code isolation, transport and backpressure, per-handler prototype and production designs, writing and reviewing this spec |
+| Claude (claude.ai app, Project "Zenity interview") | Claude Sonnet 5.5 for the entire project | Reading the brief, scoping, and the whole design discussion: pods vs. in-code isolation, transport and backpressure, per-handler prototype and production designs, writing and reviewing this spec |
 | Claude Code (cloud session "skydra2", claude.ai web app) | Claude Sonnet 5.5, the session's configured model | Building the service from the dev spec: Go code and tests, Dockerfile, Kustomize manifests, CI and release workflows, eleven stacked branches and pull requests, code review with fixes, and DESIGN.md |
 
 ## Configuration that shaped the output
