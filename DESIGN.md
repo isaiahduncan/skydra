@@ -108,4 +108,4 @@ Tests, a few meaningful ones as the brief asks:
 
 In code the swap to production is the transport behind the queue abstraction, and the enabled-handlers config becomes the per-pod role.
 
-Assumptions: a pod on kind can reach the public Jetstream endpoint, and post text is read only to match keywords and is never logged. Described, not built: the graph and retraction handlers, separate pods, Kafka, Redis-backed counts, and the follow table with tombstones.
+Described, not built: the graph and retraction handlers, separate pods, Kafka, Redis-backed counts, and the follow table with tombstones.

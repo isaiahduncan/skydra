@@ -322,6 +322,37 @@ Environment variables, supplied by the ConfigMap (`k8s/base/skydra.env`):
   builds and pushes `ghcr.io/isaiahduncan/skydra:sha-<short-sha>` and `:latest`.
 - There is no CD pipeline. Deploy by hand as above.
 
+## Assumptions
+
+The brief leaves these open. Each is a call made for the prototype.
+
+- **Isolation.** A queue and handler loop per path is enough for "run, fail and
+  scale independently". Process-level isolation and scaling are the production
+  design.
+- **Handlers.** Routing all four paths and building two handlers (content and
+  engagement) shows the shape. Graph and retraction are specified, not built.
+- **Loss.** Losing events is acceptable. A full queue drops the newest event, and
+  events are lost while the service is down.
+- **Cursor.** Reconnects resume from the last `time_us` with no rewind, and
+  replays are skipped. A restart begins live because the cursor is in memory.
+- **Filtering.** The stream is unfiltered by default, because the server cannot
+  filter by operation and deletes need the full stream.
+- **Notifications.** A structured log line stands in for a webhook. Post text is
+  read only to match keywords and is never logged.
+- **Content.** Language keys double as the language filter. Matching is whole
+  word and case-insensitive. A post with no language tag counts as English. This
+  suits spaced languages, not Japanese or Chinese.
+- **Engagement.** Likes and reposts count together per post, by arrival time. It
+  alerts once and re-arms when the count falls below the threshold. Deletes do not
+  decrement, and a restart resets counts. The defaults (100 in 60 seconds) are slow
+  to trigger, so lower them to see alerts.
+- **Deployment.** One replica with `Recreate`, so one pod reads the stream. No
+  Service, because nothing calls the pod.
+- **Testing.** Unit tests with an injected clock are enough. Live Jetstream, the
+  Docker build and the kind deploy were checked by hand, not in CI.
+- **Scope.** CI, the ghcr publish workflow, the Makefile and the PowerShell script
+  are optional extras beyond the brief.
+
 ## Known limits (prototype)
 
 All paths share one process, so an OOM stops every path. The ingester is a
